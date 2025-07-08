@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAdminAuth } from "@/contexts/admin-auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { getCompaniesStats, blockCompany, unblockCompany, deleteCompany } from "@/lib/admin-auth"
 import {
   LogOut,
   Building2,
@@ -90,47 +89,38 @@ export function AdminDashboard() {
   const loadCompanies = async () => {
     setLoading(true)
     setDebugInfo("Iniciando carregamento...")
-
+  
     try {
-      console.log("🔍 Iniciando busca de empresas...")
-      const { companies: companiesData, error } = await getCompaniesStats()
-
-      if (error) {
-        console.error("❌ Erro detalhado:", error)
-        setDebugInfo(`Erro: ${error}`)
-        toast({
-          title: "Erro ao carregar empresas",
-          description: error,
-          variant: "destructive",
-        })
-        setCompanies([])
-      } else {
-        console.log("✅ Empresas carregadas:", companiesData.length)
-        setDebugInfo(`${companiesData.length} empresas carregadas com sucesso`)
-        setCompanies(companiesData)
-
-        if (companiesData.length === 0) {
-          toast({
-            title: "Nenhuma empresa encontrada",
-            description: "Não há empresas cadastradas no sistema",
-            variant: "default",
-          })
-        }
+      const res = await fetch("/api/admin/get-companies")
+      const data = await res.json()
+  
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao buscar empresas")
       }
-    } catch (error) {
+  
+      console.log("✅ Empresas carregadas:", data.companies.length)
+      setDebugInfo(`${data.companies.length} empresas carregadas com sucesso`)
+      setCompanies(data.companies)
+  
+      if (data.companies.length === 0) {
+        toast({
+          title: "Nenhuma empresa encontrada",
+          description: "Não há empresas cadastradas no sistema",
+          variant: "default",
+        })
+      }
+    } catch (error: any) {
       console.error("💥 Erro na função loadCompanies:", error)
-      const errorMessage = error instanceof Error ? error.message : "Erro inesperado"
-      setDebugInfo(`Erro inesperado: ${errorMessage}`)
       toast({
         title: "Erro inesperado",
-        description: "Falha ao carregar dados",
+        description: error.message || "Falha ao carregar empresas",
         variant: "destructive",
       })
       setCompanies([])
     } finally {
       setLoading(false)
     }
-  }
+  }  
 
   const handleBlockCompany = async () => {
     if (!selectedCompany || !blockReason.trim()) {
@@ -141,73 +131,109 @@ export function AdminDashboard() {
       })
       return
     }
-
+  
     setActionLoading(true)
-    const { error } = await blockCompany(selectedCompany.id, blockReason)
-
-    if (error) {
-      toast({
-        title: "Erro ao bloquear empresa",
-        description: error,
-        variant: "destructive",
+  
+    try {
+      const res = await fetch("/api/admin/block-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: selectedCompany.id,
+          reason: blockReason,
+        }),
       })
-    } else {
+  
+      const result = await res.json()
+  
+      if (!res.ok) throw new Error(result.error || "Erro ao bloquear empresa")
+  
       toast({
         title: "Empresa bloqueada",
         description: `${selectedCompany.name} foi bloqueada com sucesso`,
       })
       loadCompanies()
+    } catch (err: any) {
+      toast({
+        title: "Erro ao bloquear empresa",
+        description: err.message,
+        variant: "destructive",
+      })
+    } finally {
+      setActionLoading(false)
+      setBlockDialogOpen(false)
+      setSelectedCompany(null)
+      setBlockReason("")
     }
-
-    setActionLoading(false)
-    setBlockDialogOpen(false)
-    setSelectedCompany(null)
-    setBlockReason("")
-  }
+  }  
 
   const handleUnblockCompany = async (company: CompanyWithStats) => {
     setActionLoading(true)
-    const { error } = await unblockCompany(company.id)
-
-    if (error) {
-      toast({
-        title: "Erro ao desbloquear empresa",
-        description: error,
-        variant: "destructive",
+  
+    try {
+      const res = await fetch("/api/admin/unblock-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: company.id }),
       })
-    } else {
+  
+      const result = await res.json()
+  
+      if (!res.ok) throw new Error(result.error || "Erro ao desbloquear empresa")
+  
       toast({
         title: "Empresa desbloqueada",
         description: `${company.name} foi desbloqueada com sucesso`,
       })
+  
       loadCompanies()
+    } catch (err: any) {
+      toast({
+        title: "Erro ao desbloquear empresa",
+        description: err.message,
+        variant: "destructive",
+      })
+    } finally {
+      setActionLoading(false)
     }
-    setActionLoading(false)
-  }
+  }  
 
   const handleDeleteCompany = async () => {
     if (!selectedCompany) return
-
+  
     setActionLoading(true)
-    const { error } = await deleteCompany(selectedCompany.id)
-
-    if (error) {
-      toast({
-        title: "Erro ao excluir empresa",
-        description: error,
-        variant: "destructive",
+  
+    try {
+      const res = await fetch("/api/admin/delete-company", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ companyId: selectedCompany.id }),
       })
-    } else {
+  
+      const result = await res.json()
+  
+      if (!res.ok) {
+        throw new Error(result.error || "Erro ao excluir empresa")
+      }
+  
       toast({
         title: "Empresa excluída",
         description: `${selectedCompany.name} foi excluída permanentemente`,
       })
       loadCompanies()
+    } catch (err: any) {
+      toast({
+        title: "Erro",
+        description: err.message || "Erro ao excluir empresa",
+        variant: "destructive",
+      })
+    } finally {
+      setActionLoading(false)
+      setDeleteDialogOpen(false)
+      setSelectedCompany(null)
     }
-
-    setActionLoading(false)
-    setDeleteDialogOpen(false)
-    setSelectedCompany(null)
   }
 
   const openBlockDialog = (company: CompanyWithStats) => {

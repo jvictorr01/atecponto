@@ -13,9 +13,9 @@ export interface AdminUser {
   is_active: boolean
 }
 
+// ✅ FUNÇÃO SEGURA, PODE RODAR NO CLIENT
 export async function loginAdmin(data: AdminLoginData) {
   try {
-    // Buscar admin pelo username
     const { data: admin, error } = await supabase
       .from("system_admins")
       .select("*")
@@ -27,7 +27,6 @@ export async function loginAdmin(data: AdminLoginData) {
       throw new Error("Usuário ou senha incorretos")
     }
 
-    // Verificar senha
     const isValidPassword = await bcrypt.compare(data.password, admin.password_hash)
     if (!isValidPassword) {
       throw new Error("Usuário ou senha incorretos")
@@ -164,29 +163,44 @@ export async function unblockCompany(companyId: string) {
 export async function deleteCompany(companyId: string) {
   try {
     // Buscar user_id da empresa
-    const { data: company } = await supabase.from("companies").select("user_id").eq("id", companyId).single()
+    const { data: company, error: companyFetchError } = await supabase
+      .from("companies")
+      .select("user_id")
+      .eq("id", companyId)
+      .single()
 
-    if (!company) {
+    if (companyFetchError || !company) {
       throw new Error("Empresa não encontrada")
     }
 
-    // Deletar empresa (cascade vai deletar funcionários, horários, etc.)
-    const { error: deleteCompanyError } = await supabase.from("companies").delete().eq("id", companyId)
+    const userId = company.user_id
+
+    // Deletar empresa
+    const { error: deleteCompanyError } = await supabase
+      .from("companies")
+      .delete()
+      .eq("id", companyId)
 
     if (deleteCompanyError) throw deleteCompanyError
 
     // Deletar perfil do usuário
-    const { error: deleteProfileError } = await supabase.from("profiles").delete().eq("id", company.user_id)
+    const { error: deleteProfileError } = await supabase
+      .from("profiles")
+      .delete()
+      .eq("id", userId)
 
     if (deleteProfileError) throw deleteProfileError
 
-    // Nota: Não conseguimos deletar do auth.users sem service role
-    // A empresa ficará bloqueada mas o usuário auth ainda existirá
-    console.log("Empresa deletada, mas usuário auth mantido (requer service role para deletar)")
+    // Deletar do auth.users via service role
+    const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(userId)
+
+    if (deleteAuthError) throw deleteAuthError
 
     return { error: null }
   } catch (error) {
-    console.error("Erro ao deletar empresa:", error)
-    return { error: error instanceof Error ? error.message : "Erro ao excluir empresa" }
+    console.error("Erro ao deletar empresa e usuário:", error)
+    return {
+      error: error instanceof Error ? error.message : "Erro ao excluir empresa e usuário",
+    }
   }
 }
