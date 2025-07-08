@@ -42,6 +42,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { formatCNPJ } from "@/lib/utils"
+import { supabase } from "@/lib/supabase"
 
 interface CompanyWithStats {
   id: string
@@ -72,7 +73,30 @@ export function AdminDashboard() {
   const { toast } = useToast()
 
   useEffect(() => {
+    // Função para carregar empresas
     loadCompanies()
+  
+    // Criar canal realtime com Supabase
+    const channel = supabase
+      .channel("realtime:companies")
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // escuta insert, update e delete
+          schema: "public",
+          table: "companies",
+        },
+        (payload) => {
+          console.log("📡 Realtime update recebido:", payload)
+          loadCompanies()
+        }
+      )
+      .subscribe()
+  
+    // Cleanup no unmount
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   useEffect(() => {
