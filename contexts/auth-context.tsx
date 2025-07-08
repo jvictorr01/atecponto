@@ -81,6 +81,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error
 
+      // --- AQUI COMEÇA A LÓGICA DE LIMITAÇÃO DE DISPOSITIVOS ---
+      function getDeviceId() {
+        let deviceId = localStorage.getItem("deviceId");
+        if (!deviceId) {
+          deviceId = crypto.randomUUID();
+          localStorage.setItem("deviceId", deviceId);
+        }
+        return deviceId;
+      }
+      
+      const deviceId = getDeviceId();
+      const deviceInfo = typeof navigator !== "undefined" ? navigator.userAgent : "unknown-device";
+      const ipAddress = "127.0.0.1"; // ou real via backend/api
+      
+      const { data: sessions, error: sessionsError } = await supabase
+        .from("user_sessions")
+        .select("*")
+        .eq("user_id", authData.user.id)
+        .eq("is_active", true);
+      
+      if (sessionsError) throw sessionsError;
+      
+      const alreadyRegistered = sessions.some(s => s.device_info === deviceInfo);
+      
+      if (!alreadyRegistered && sessions.length >= 2) {
+        await supabase.auth.signOut();
+        throw new Error("Limite de dispositivos atingido. Faça logout em outro dispositivo.");
+      }
+      
+      if (!alreadyRegistered) {
+        await supabase.from("user_sessions").insert([
+          {
+            user_id: authData.user.id,
+            device_info: deviceInfo,
+            ip_address: ipAddress,
+            is_active: true,
+            last_activity: new Date().toISOString(),
+          }
+        ]);
+      } else {
+        await supabase.from("user_sessions")
+          .update({ last_activity: new Date().toISOString() })
+          .eq("user_id", authData.user.id)
+          .eq("device_info", deviceInfo);
+      }
+      // --- FIM DA LÓGICA DE LIMITAÇÃO DE DISPOSITIVOS ---
+
       // Verificar se a empresa está bloqueada
       if (authData.user) {
         const { data: company } = await supabase
@@ -163,7 +210,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
 
   const logout = async () => {
-    await supabase.auth.signOut()
+    const deviceInfo = navigator.userAgent;
+  
+    if (user) {
+      await supabase.from("user_sessions")
+        .update({ is_active: false })
+        .eq("user_id", user.id)
+        .eq("device_info", deviceInfo);
+    }
+  
+    await supabase.auth.signOut();
   }
 
   return (
