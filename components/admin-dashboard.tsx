@@ -120,52 +120,79 @@ export function AdminDashboard() {
       supabase.removeChannel(channel)
     }
   }, [])
-  
+
   const loadCompanies = async () => {
-    setLoading(true)
-    setDebugInfo("Iniciando carregamento...")
-  
-    try {
-      const res = await fetch("/api/admin/get-companies")
-      const data = await res.json()
-  
-      if (!res.ok) {
-        throw new Error(data.error || "Erro ao buscar empresas")
-      }
-  
-      console.log("✅ Empresas carregadas:", data.companies.length)
-      setDebugInfo(`${data.companies.length} empresas carregadas com sucesso`)
-      setCompanies(data.companies)
-  
-      // ✅ Atualizar o filtro com base no searchTerm atual
-      const filtered = data.companies.filter((company) =>
-        company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (company.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-        company.cnpj.includes(searchTerm) ||
-        (company.whatsapp && company.whatsapp.includes(searchTerm))
-      )
-      setFilteredCompanies(filtered)
-  
-      if (data.companies.length === 0) {
-        toast({
-          title: "Nenhuma empresa encontrada",
-          description: "Não há empresas cadastradas no sistema",
-          variant: "default",
-        })
-      }
-    } catch (error: any) {
-      console.error("💥 Erro na função loadCompanies:", error)
-      toast({
-        title: "Erro inesperado",
-        description: error.message || "Falha ao carregar empresas",
-        variant: "destructive",
+  setLoading(true)
+  setDebugInfo("Iniciando carregamento...")
+
+  try {
+    const { data: companies, error } = await supabase
+      .from("companies")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (error) throw error
+    if (!companies) return
+
+    const userIds = companies.map((c) => c.user_id).filter(Boolean)
+
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("*")
+      .in("id", userIds)
+
+    const enrichedCompanies = await Promise.all(
+      companies.map(async (company) => {
+        const profile = profiles?.find((p) => p.id === company.user_id)
+
+        const { count: employeeCount } = await supabase
+          .from("employees")
+          .select("*", { count: "exact", head: true })
+          .eq("company_id", company.id)
+
+        return {
+          ...company,
+          email: profile?.email || company.email || "",
+          whatsapp: profile?.whatsapp || company.whatsapp || "",
+          cnpj: profile?.cnpj || company.cnpj || "",
+          employee_count: employeeCount || 0,
+        }
       })
-      setCompanies([])
-      setFilteredCompanies([])
-    } finally {
-      setLoading(false)
+    )
+
+    console.log("✅ Empresas carregadas:", enrichedCompanies.length)
+    setDebugInfo(`${enrichedCompanies.length} empresas carregadas com sucesso`)
+    setCompanies(enrichedCompanies)
+
+    const filtered = enrichedCompanies.filter((company) =>
+      company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (company.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+      company.cnpj.includes(searchTerm) ||
+      (company.whatsapp && company.whatsapp.includes(searchTerm))
+    )
+    setFilteredCompanies(filtered)
+
+    if (enrichedCompanies.length === 0) {
+      toast({
+        title: "Nenhuma empresa encontrada",
+        description: "Não há empresas cadastradas no sistema",
+        variant: "default",
+      })
     }
-  }  
+  } catch (error: any) {
+    console.error("💥 Erro na função loadCompanies:", error)
+    toast({
+      title: "Erro inesperado",
+      description: error.message || "Falha ao carregar empresas",
+      variant: "destructive",
+    })
+    setCompanies([])
+    setFilteredCompanies([])
+  } finally {
+    setLoading(false)
+  }
+}
+
 
   const handleBlockCompany = async () => {
     if (!selectedCompany || !blockReason.trim()) {
