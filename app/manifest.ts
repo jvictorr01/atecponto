@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Ponto Digital - Sistema de Controle de Ponto",
+    name: "Atec Ponto - Sistema de Controle de Ponto",
     short_name: "Ponto Digital",
     description: "Sistema completo de controle de ponto e gestão de funcionários",
     start_url: "/",
@@ -12,13 +12,13 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait",
     icons: [
       {
-        src: "/icon-192x192.png",
+        src: "/pwa-192x192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "/icon-512x512.png",
+        src: "/pwa-512x512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
