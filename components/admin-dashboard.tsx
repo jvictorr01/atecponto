@@ -73,43 +73,54 @@ export function AdminDashboard() {
   const { toast } = useToast()
 
   useEffect(() => {
-    // Função para carregar empresas
     loadCompanies()
   
-    // Criar canal realtime com Supabase
     const channel = supabase
       .channel("realtime:companies")
       .on(
         "postgres_changes",
         {
-          event: "*", // escuta insert, update e delete
+          event: "*",
           schema: "public",
           table: "companies",
         },
         (payload) => {
-          console.log("📡 Realtime update recebido:", payload)
-          loadCompanies()
+          console.log("📡 Realtime payload recebido:", payload)
+  
+          const updatedCompany = payload.new
+  
+          if (!updatedCompany) return
+  
+          setCompanies((prevCompanies) => {
+            const exists = prevCompanies.some((c) => c.id === updatedCompany.id)
+  
+            const nextCompanies = exists
+              ? prevCompanies.map((c) =>
+                  c.id === updatedCompany.id ? { ...c, ...updatedCompany } : c
+                )
+              : [updatedCompany, ...prevCompanies]
+  
+            // Atualiza lista filtrada também
+            const filtered = nextCompanies.filter((company) =>
+              company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              (company.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+              company.cnpj.includes(searchTerm) ||
+              (company.whatsapp && company.whatsapp.includes(searchTerm))
+            )
+  
+            setFilteredCompanies(filtered)
+  
+            return nextCompanies
+          })
         }
       )
       .subscribe()
   
-    // Cleanup no unmount
     return () => {
       supabase.removeChannel(channel)
     }
   }, [])
-
-  useEffect(() => {
-    // Filtrar empresas baseado no termo de busca
-    const filtered = companies.filter((company) =>
-      company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (company.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-      company.cnpj.includes(searchTerm) ||
-      (company.whatsapp && company.whatsapp.includes(searchTerm))
-    )
-    setFilteredCompanies(filtered)
-  }, [companies, searchTerm])
-
+  
   const loadCompanies = async () => {
     setLoading(true)
     setDebugInfo("Iniciando carregamento...")
