@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/auth-context"
 import { LoginForm } from "@/components/login-form"
 import { Dashboard } from "@/components/dashboard"
 import { RegisterForm } from "@/components/register-form"
-import { CreateCompanyForm } from "@/components/create-company-form"
 import { BlockedCompanyMessage } from "@/components/blocked-company-message"
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
@@ -84,16 +83,6 @@ export default function Home() {
           ) : (
             <LoginForm onToggle={() => setShowRegister(true)} />
           )}
-        </div>
-      </div>
-    )
-  }
-
-  if (!hasCompany) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <CreateCompanyForm onCompanyCreated={() => setHasCompany(true)} />
         </div>
       </div>
     )
