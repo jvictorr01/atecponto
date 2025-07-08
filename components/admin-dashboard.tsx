@@ -126,6 +126,15 @@ export function AdminDashboard() {
       setDebugInfo(`${data.companies.length} empresas carregadas com sucesso`)
       setCompanies(data.companies)
   
+      // ✅ Atualizar o filtro com base no searchTerm atual
+      const filtered = data.companies.filter((company) =>
+        company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (company.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+        company.cnpj.includes(searchTerm) ||
+        (company.whatsapp && company.whatsapp.includes(searchTerm))
+      )
+      setFilteredCompanies(filtered)
+  
       if (data.companies.length === 0) {
         toast({
           title: "Nenhuma empresa encontrada",
@@ -141,6 +150,7 @@ export function AdminDashboard() {
         variant: "destructive",
       })
       setCompanies([])
+      setFilteredCompanies([])
     } finally {
       setLoading(false)
     }
