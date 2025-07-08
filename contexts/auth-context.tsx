@@ -156,14 +156,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const whatsappNumbers = data.whatsapp.replace(/\D/g, "")
   
       // Verificar duplicidade de CNPJ
-      const [profileCheck, companyCheck] = await Promise.all([
-        supabase.from("profiles").select("id").eq("cnpj", cnpjNumbers).maybeSingle(),
-        supabase.from("companies").select("id").eq("cnpj", cnpjNumbers).maybeSingle(),
-      ])
-  
-      if (profileCheck.data || companyCheck.data) {
+      const { data: existingCompany } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("cnpj", cnpjNumbers)
+        .maybeSingle()
+
+      if (existingCompany) {
         throw new Error("CNPJ já cadastrado")
-      }
+}
   
       // Criar usuário no Supabase Auth
       const { data: authData, error } = await supabase.auth.signUp({
