@@ -41,7 +41,7 @@ export function AdminLoginForm() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <img
-              src="https://i.imgur.com/VnLUASy.jpeg"
+              src="https://i.imgur.com/uQZN8xT.png"
               alt="Atec Ponto"
               className="h-32 w-auto"
             />

@@ -122,7 +122,7 @@ function RegisterForm(_a) {
     return (React.createElement(card_1.Card, { className: "w-full" },
         React.createElement(card_1.CardHeader, { className: "text-center" },
             React.createElement("div", { className: "flex justify-center mb-4" },
-                React.createElement("img", { src: "https://i.imgur.com/VnLUASy.jpeg", alt: "Atec Ponto", className: "h-32 w-auto" })),
+                React.createElement("img", { src: "https://i.imgur.com/uQZN8xT.png", alt: "Atec Ponto", className: "h-32 w-auto" })),
             React.createElement(card_1.CardTitle, { className: "text-2xl font-bold text-gray-900" }, "Criar Conta"),
             React.createElement(card_1.CardDescription, null, "Cadastre-se para come\u00E7ar a usar o Ponto Digital")),
         React.createElement(card_1.CardContent, null,

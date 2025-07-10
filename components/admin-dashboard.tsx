@@ -337,7 +337,7 @@ export function AdminDashboard() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
               <img
-                src="https://i.imgur.com/VnLUASy.jpeg"
+                src="https://i.imgur.com/uQZN8xT.png"
                 alt="Atec Ponto"
                 className="h-10 w-auto"
               />
