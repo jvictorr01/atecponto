@@ -69,7 +69,14 @@ interface WorkSchedule {
 export function RegisterPointTab() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selectedEmployee, setSelectedEmployee] = useState<string>("")
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0])
+//  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0])
+  const getLocalISODate = (date: Date = new Date()): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+const [selectedDate, setSelectedDate] = useState<string>(getLocalISODate())
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([])
   const [workSchedule, setWorkSchedule] = useState<WorkSchedule | null>(null)
   const [loading, setLoading] = useState(false)
@@ -145,7 +152,10 @@ export function RegisterPointTab() {
       const { data: company } = await supabase.from("companies").select("id").eq("user_id", user.id).single()
 
       if (company) {
-        const dayOfWeek = new Date(selectedDate).getDay()
+        // Corrigir para garantir data local e não UTC
+        const [year, month, day] = selectedDate.split("-").map(Number)
+        const localDate = new Date(year, month - 1, day)
+        const dayOfWeek = localDate.getDay()
         const { data: scheduleData } = await supabase
           .from("work_schedules")
           .select("*")
@@ -172,7 +182,7 @@ export function RegisterPointTab() {
     }
 
     setPointType(type)
-    setManualTime("")
+    setManualTime(workSchedule?.[type] || "")
     setDialogOpen(true)
   }
 
@@ -225,7 +235,7 @@ export function RegisterPointTab() {
         // Criar novo registro
         const { error } = await supabase.from("time_records").insert({
           employee_id: selectedEmployee,
-          date: selectedDate,
+          date: selectedDate.substring(0, 10),
           ...updateData,
         })
 
@@ -243,7 +253,7 @@ export function RegisterPointTab() {
         lunch_start: "Início do Almoço",
         lunch_end: "Fim do Almoço",
         exit_time: "Saída",
-      }
+      }  
 
       toast({
         title: "Ponto registrado!",
@@ -399,15 +409,27 @@ export function RegisterPointTab() {
     exit_time: "Saída",
   }
 
+  function formatDateWithWeekday(dateString: string): string {
+    const [year, month, day] = dateString.split("-").map(Number)
+    const localDate = new Date(year, month - 1, day)
+  
+    return localDate.toLocaleDateString("pt-BR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
+  }
+
   // Gerar opções de dias do mês atual
   const currentMonth = new Date().getMonth()
   const currentYear = new Date().getFullYear()
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
   const monthDays = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1
-    const date = new Date(currentYear, currentMonth, day)
+    const date = new Date(`${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00`)
     return {
-      value: date.toISOString().split("T")[0],
+      value: getLocalISODate(date),
       label: `${day.toString().padStart(2, "0")} - ${date.toLocaleDateString("pt-BR", { weekday: "short" })}`,
     }
   })
@@ -565,7 +587,7 @@ export function RegisterPointTab() {
               <Card className="bg-green-50 border-green-200">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm">
-                    Horário Configurado para {new Date(selectedDate).toLocaleDateString("pt-BR", { weekday: "long" })}
+                    Horário Configurado para {formatDateWithWeekday(selectedDate)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -750,15 +772,14 @@ export function RegisterPointTab() {
       {/* Registros da Data Selecionada */}
       <Card>
         <CardHeader>
-          <CardTitle>
-            Registros de {new Date(selectedDate).toLocaleDateString("pt-BR")} -{" "}
-            {new Date(selectedDate).toLocaleDateString("pt-BR", { weekday: "long" })}
-          </CardTitle>
+        <CardTitle>
+          Registros de {formatDateWithWeekday(selectedDate)}
+        </CardTitle>
         </CardHeader>
         <CardContent>
           {timeRecords.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              Nenhum ponto registrado para {new Date(selectedDate).toLocaleDateString("pt-BR")}.
+              Nenhum ponto registrado para {formatDateWithWeekday(selectedDate)}.
             </div>
           ) : (
             <Table>

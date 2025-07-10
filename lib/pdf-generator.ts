@@ -112,8 +112,13 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
   doc.text(formatCNPJ(data.company.cnpj), 10, 30)
 
   // Período
-  const startDate = new Date(data.period.startDate).toLocaleDateString("pt-BR")
-  const endDate = new Date(data.period.endDate).toLocaleDateString("pt-BR")
+  function formatLocalDateString(dateStr: string): string {
+    const [year, month, day] = dateStr.split("-")
+    return `${day}/${month}/${year}`
+  }
+  
+  const startDate = formatLocalDateString(data.period.startDate)
+  const endDate = formatLocalDateString(data.period.endDate)
   doc.setFontSize(9)
   doc.setFont("arial", "normal")
   doc.text(`Período: de ${startDate} a ${endDate}`, 10, 37)
@@ -233,8 +238,13 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
   doc.setFontSize(6)
 
   // Gerar dados para todos os dias do mês
-  const startDate2 = new Date(data.period.startDate)
-  const endDate2 = new Date(data.period.endDate)
+  function parseLocalDate(dateStr: string): Date {
+    const [y, m, d] = dateStr.split("-").map(Number)
+    return new Date(y, m - 1, d) // sem UTC
+  }
+  
+  const startDate2 = parseLocalDate(data.period.startDate)
+  const endDate2 = parseLocalDate(data.period.endDate)
   const currentDate = new Date(startDate2)
 
   let totalNormal = 0
@@ -259,60 +269,30 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
     let faltaHours = "00:00"
 
     if (schedule && schedule.entry_time && schedule.exit_time) {
-      if (record && record.entry_time && record.exit_time) {
-        // Calcular horas trabalhadas
-        const entryMinutes = timeToMinutes(record.entry_time)
-        const exitMinutes = timeToMinutes(record.exit_time)
-        let workedMinutes = exitMinutes - entryMinutes
-
-        // Subtrair almoço se houver
-        if (record.lunch_start && record.lunch_end) {
-          const lunchStart = timeToMinutes(record.lunch_start)
-          const lunchEnd = timeToMinutes(record.lunch_end)
-          workedMinutes -= lunchEnd - lunchStart
-        }
-
-        // Calcular horas esperadas
-        const expectedEntry = timeToMinutes(schedule.entry_time)
-        const expectedExit = timeToMinutes(schedule.exit_time)
-        let expectedMinutes = expectedExit - expectedEntry
-
+      if (schedule && schedule.entry_time && schedule.exit_time) {
+        // Apenas exibe o “Normal” igual ao esperado:
+        const expectedEntry   = timeToMinutes(schedule.entry_time)
+        const expectedExit    = timeToMinutes(schedule.exit_time)
+        let expectedMinutes   = expectedExit - expectedEntry
         if (schedule.lunch_start && schedule.lunch_end) {
-          const expectedLunchStart = timeToMinutes(schedule.lunch_start)
-          const expectedLunchEnd = timeToMinutes(schedule.lunch_end)
-          expectedMinutes -= expectedLunchEnd - expectedLunchStart
+          expectedMinutes -= timeToMinutes(schedule.lunch_end) - timeToMinutes(schedule.lunch_start)
         }
-
-        if (workedMinutes >= expectedMinutes) {
-          normalHours = minutesToTime(Math.min(workedMinutes, expectedMinutes))
-          if (workedMinutes > expectedMinutes) {
-            extraHours = minutesToTime(workedMinutes - expectedMinutes)
-            totalExtra += workedMinutes - expectedMinutes
-          }
-          totalNormal += Math.min(workedMinutes, expectedMinutes)
-        } else {
-          normalHours = minutesToTime(workedMinutes)
-          faltaHours = minutesToTime(expectedMinutes - workedMinutes)
-          totalNormal += workedMinutes
-          totalFalta += expectedMinutes - workedMinutes
-        }
-      } else {
-        // Não registrou ponto - falta total
-        const expectedEntry = timeToMinutes(schedule.entry_time)
-        const expectedExit = timeToMinutes(schedule.exit_time)
-        let expectedMinutes = expectedExit - expectedEntry
-
-        if (schedule.lunch_start && schedule.lunch_end) {
-          const expectedLunchStart = timeToMinutes(schedule.lunch_start)
-          const expectedLunchEnd = timeToMinutes(schedule.lunch_end)
-          expectedMinutes -= expectedLunchEnd - expectedLunchStart
-        }
-
-        faltaHours = minutesToTime(expectedMinutes)
-        totalFalta += expectedMinutes
-        totalFaltas++
+        normalHours = minutesToTime(expectedMinutes)
+        totalNormal += expectedMinutes
+      
+        // **Imprime direto** o extra e a falta que vieram no objeto:
+        extraHours = record?.extra_hours   || "00:00"
+        faltaHours = record?.missing_hours || "00:00"
+      
+        // Acumula totais convertendo de “HH:MM” pra minutos:
+        const [ehH, ehM] = extraHours.split(":").map(Number)
+        totalExtra += ehH * 60 + ehM
+        const [fhH, fhM] = faltaHours.split(":").map(Number)
+        totalFalta += fhH * 60 + fhM
+        if (fhH + fhM > 0) totalFaltas++
       }
-    }
+
+      }
 
     // Linha da tabela
     const rowData = [

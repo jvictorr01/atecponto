@@ -137,32 +137,57 @@ export function ReportsTab() {
     setLoading(true)
 
     try {
-      let dateFilter = ""
       const today = new Date()
-
+      let startDate: Date
+      let endDate: Date
+      
       switch (reportPeriod) {
         case "daily":
-          dateFilter = today.toISOString().split("T")[0]
+          startDate = new Date(today)
+          endDate = new Date(today)
           break
         case "weekly":
-          const weekStart = new Date(today)
-          weekStart.setDate(today.getDate() - today.getDay())
-          dateFilter = weekStart.toISOString().split("T")[0]
+          startDate = new Date(today)
+          startDate.setDate(today.getDate() - today.getDay())
+          endDate = new Date(startDate)
+          endDate.setDate(startDate.getDate() + 6)
           break
         case "monthly":
-          dateFilter = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-01`
+          startDate = new Date(today.getFullYear(), today.getMonth(), 1)
+          endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0)
           break
+        default:
+          return
       }
+      
+      function formatDateToYYYYMMDD(date: Date): string {
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, "0")
+        const day = String(date.getDate()).padStart(2, "0")
+        return `${year}-${month}-${day}`
+      }
+      
+      const start = formatDateToYYYYMMDD(startDate)
+      const end = formatDateToYYYYMMDD(endDate)
+
+      console.log({
+        rawToday: new Date(),
+        startDate,
+        endDate,
+        startFormatted: formatDateToYYYYMMDD(startDate),
+        endFormatted: formatDateToYYYYMMDD(endDate),
+      })
 
       const { data: recordsData } = await supabase
-        .from("time_records")
-        .select(`
-          *,
-          employee:employees(name, cpf)
-        `)
-        .eq("employee_id", selectedEmployee)
-        .gte("date", dateFilter)
-        .order("date", { ascending: false })
+      .from("time_records")
+      .select(`
+        *,
+        employee:employees(name, cpf)
+      `)
+      .eq("employee_id", selectedEmployee)
+      .gte("date", start)
+      .lte("date", end)
+      .order("date", { ascending: false })
 
       setTimeRecords(recordsData || [])
     } catch (error) {
@@ -200,8 +225,8 @@ export function ReportsTab() {
     }
 
     // Iterar por cada dia do período
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split("T")[0]
+    for (let d = new Date(startDate.getTime()); d <= endDate; d = new Date(d.getTime() + 86400000)) {
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
       const dayOfWeek = d.getDay()
 
       // Buscar horário configurado para o dia
@@ -264,11 +289,21 @@ export function ReportsTab() {
     return hours * 60 + minutes
   }
 
+  function parseLocalDate(dateStr: string): Date {
+    const [year, month, day] = dateStr.split("-").map(Number)
+    return new Date(year, month - 1, day)
+  }
+
   const generatePDFReportHandler = async () => {
     if (!selectedEmployee || !company) return
 
     const employee = employees.find((e) => e.id === selectedEmployee)
     if (!employee) return
+
+    function parseLocalDate(dateStr: string): Date {
+      const [y, m, d] = dateStr.split("-").map(Number)
+      return new Date(y, m - 1, d)
+    }
 
     // Determinar período
     const today = new Date()
@@ -300,22 +335,45 @@ export function ReportsTab() {
       workScheduleByDay[schedule.day_of_week] = schedule
     })
 
-    const reportData = {
-      company: {
-        name: company.name,
-        cnpj: company.cnpj,
-      },
-      employee: {
-        name: employee.name,
-        cpf: employee.cpf,
-      },
-      period: {
-        startDate: startDate.toISOString().split("T")[0],
-        endDate: endDate.toISOString().split("T")[0],
-      },
-      workSchedule: workScheduleByDay,
-      timeRecords: timeRecords,
+    function formatLocalDate(date: Date): string {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, "0")
+      const day = String(date.getDate()).padStart(2, "0")
+      return `${year}-${month}-${day}`
+    }    
+
+    function normalizeDateStrings(records: TimeRecord[]): TimeRecord[] {
+      return records.map((r) => ({
+        ...r,
+        date: r.date // já está no formato correto "YYYY-MM-DD"
+      }))
     }
+
+    // importe esta função no topo do arquivo
+    function minutesToTime(minutes: number): string {
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    const reportRecords = calculations.map(calc => ({
+      date:    calc.date,
+      entry_time:   calc.record?.entry_time,
+      lunch_start:  calc.record?.lunch_start,
+      lunch_end:    calc.record?.lunch_end,
+      exit_time:    calc.record?.exit_time,
+      // pego direto do cálculo, em minutos → formato “HH:MM”
+      extra_hours:   minutesToTime(calc.extraHours),
+      missing_hours: minutesToTime(calc.missingHours),
+    }));
+    
+    const reportData = {
+      company:     { name: company.name, cnpj: company.cnpj },
+      employee:    { name: employee.name, cpf: employee.cpf },
+      period:      { startDate: formatLocalDate(startDate), endDate: formatLocalDate(endDate) },
+      workSchedule: workScheduleByDay,
+      timeRecords:  reportRecords,      // ← aqui!
+    };
 
     try {
       await generatePDFReport(reportData)
@@ -461,9 +519,11 @@ export function ReportsTab() {
                     <TableRow key={calc.date}>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{new Date(calc.date).toLocaleDateString("pt-BR")}</div>
+                          <div className="font-medium">
+                            {parseLocalDate(calc.date).toLocaleDateString("pt-BR")}
+                          </div>
                           <div className="text-sm text-gray-500">
-                            {new Date(calc.date).toLocaleDateString("pt-BR", { weekday: "short" })}
+                          {parseLocalDate(calc.date).toLocaleDateString("pt-BR", { weekday: "short" })}
                           </div>
                         </div>
                       </TableCell>
