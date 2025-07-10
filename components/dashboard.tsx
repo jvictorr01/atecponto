@@ -59,8 +59,8 @@ export function Dashboard() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
               <img
-                src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo-atec-png_1-AAeR15EfXiAGtFSGwsY99zuEfdCz4e.png"
-                alt="ATEC Softwares"
+                src="https://i.imgur.com/VnLUASy.jpeg"
+                alt="Atec Ponto"
                 className="h-10 w-auto"
               />
               <div>
@@ -72,7 +72,7 @@ export function Dashboard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open("https://google.com", "_blank")}
+                onClick={() => window.open("https://atecponto.com.br/", "_blank")}
                 className="hidden sm:flex"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />

@@ -41,9 +41,9 @@ export function AdminLoginForm() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <img
-              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo-atec-png_1-CliCtKZll3t1sbKhd3btg5wYSmHDM7.png"
-              alt="ATEC Softwares"
-              className="h-16 w-auto"
+              src="https://i.imgur.com/VnLUASy.jpeg"
+              alt="Atec Ponto"
+              className="h-32 w-auto"
             />
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">Backoffice Admin</CardTitle>

@@ -18,7 +18,6 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Ponto Digital",
   },
-    generator: 'v0.dev'
 }
 
 export default function RootLayout({
