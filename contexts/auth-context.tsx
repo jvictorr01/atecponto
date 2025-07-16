@@ -210,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }  
   
 
-  const logout = async () => {
+/*  const logout = async () => {
     const deviceInfo = navigator.userAgent;
   
     if (user) {
@@ -221,7 +221,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   
     await supabase.auth.signOut();
+  } */ // logout antigo
+
+  const logout = async () => {
+  const deviceInfo = navigator.userAgent
+
+  if (user) {
+    await supabase
+      .from("user_sessions")
+      .update({ is_active: false })
+      .eq("user_id", user.id)
+      .eq("device_info", deviceInfo)
   }
+
+  await supabase.auth.signOut()
+
+  // Limpa os estados do contexto
+  setUser(null)
+  setProfile(null)
+
+  // Redireciona para a tela de login
+  window.location.href = "/login" // ou useRouter().push("/login") se quiser
+} // logou novo
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, blockedCompany, login, logout, register }}>{children}</AuthContext.Provider>
