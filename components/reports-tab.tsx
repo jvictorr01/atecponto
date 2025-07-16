@@ -7,389 +7,212 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/contexts/auth-context"
 import { supabase } from "@/lib/supabase"
-import { Download, FileText, Calendar, Clock, TrendingUp, TrendingDown } from "lucide-react"
+import { Download, FileText, CalendarIcon, Clock, TrendingUp, TrendingDown } from "lucide-react"
 import { formatMinutesToHours, intervalToMinutes } from "@/lib/time-calculations"
 import { generatePDFReport } from "@/lib/pdf-generator"
+import { Calendar } from "@/components/ui/calendar"
+import { CaptionProps } from "react-day-picker"
+import { ptBR } from "date-fns/locale"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { format } from "date-fns"
 
-interface Employee {
-  id: string
-  name: string
-  cpf: string
-}
+interface Employee { id: string; name: string; cpf: string }
+interface TimeRecord { id: string; date: string; entry_time: string|null; lunch_start: string|null; lunch_end: string|null; exit_time: string|null; extra_hours: string; missing_hours: string; employee: { name: string; cpf: string } }
+interface WorkSchedule { day_of_week: number; entry_time: string|null; lunch_start: string|null; lunch_end: string|null; exit_time: string|null }
+interface DayCalculation { date: string; dayOfWeek: number; schedule: WorkSchedule|null; record: TimeRecord|null; expectedHours: number; workedHours: number; extraHours: number; missingHours: number }
 
-interface TimeRecord {
-  id: string
-  date: string
-  entry_time: string | null
-  lunch_start: string | null
-  lunch_end: string | null
-  exit_time: string | null
-  extra_hours: string
-  missing_hours: string
-  employee: {
-    name: string
-    cpf: string
-  }
-}
-
-interface WorkSchedule {
-  day_of_week: number
-  entry_time: string | null
-  lunch_start: string | null
-  lunch_end: string | null
-  exit_time: string | null
-}
-
-interface DayCalculation {
-  date: string
-  dayOfWeek: number
-  schedule: WorkSchedule | null
-  record: TimeRecord | null
-  expectedHours: number
-  workedHours: number
-  extraHours: number
-  missingHours: number
+function CustomCaption({ displayMonth, locale, onMonthChange }: CaptionProps) {
+  const months = Array.from({ length: 12 }, (_, i) =>
+    new Date(2025, i).toLocaleString(locale ?? "pt-BR", { month: "long" })
+  )
+  return (
+    <div className="flex justify-center items-center gap-4 mb-4">
+      <select
+        className="rounded-md border px-2 py-1 text-sm capitalize"
+        value={displayMonth.getMonth()}
+        onChange={e => onMonthChange?.(new Date(displayMonth.getFullYear(), +e.target.value))}
+      >
+        {months.map((m, i) => (
+          <option key={i} value={i}>
+            {m}
+          </option>
+        ))}
+      </select>
+      <select
+        className="rounded-md border px-2 py-1 text-sm"
+        value={displayMonth.getFullYear()}
+        onChange={e => onMonthChange?.(new Date(+e.target.value, displayMonth.getMonth()))}
+      >
+        {Array.from({ length: 11 }, (_, i) => 2020 + i).map(year => (
+          <option key={year} value={year}>
+            {year}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
 }
 
 export function ReportsTab() {
+  const [selectedRange, setSelectedRange] = useState<{ from?: Date; to?: Date }>({})
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selectedEmployee, setSelectedEmployee] = useState<string>("")
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([])
   const [workSchedules, setWorkSchedules] = useState<WorkSchedule[]>([])
   const [company, setCompany] = useState<any>(null)
   const [loading, setLoading] = useState(false)
-  const [reportPeriod, setReportPeriod] = useState<"daily" | "weekly" | "monthly">("monthly")
   const [calculations, setCalculations] = useState<DayCalculation[]>([])
   const { user } = useAuth()
 
-  useEffect(() => {
-    loadEmployees()
-    loadCompanyData()
-    loadWorkSchedules()
-  }, [user])
+  useEffect(() => { loadEmployees(); loadCompany(); loadWorkSchedules() }, [user])
+  useEffect(() => { if (selectedEmployee) loadTimeRecords() }, [selectedEmployee, selectedRange])
+  useEffect(() => { if (timeRecords.length && workSchedules.length) calculateReport() }, [timeRecords, workSchedules])
 
-  useEffect(() => {
-    if (selectedEmployee) {
-      loadTimeRecords()
-    }
-  }, [selectedEmployee, reportPeriod])
+  // Formata Date para 'YYYY-MM-DD'
+  const formatISO = (d: Date) => format(d, "yyyy-MM-dd")
 
-  useEffect(() => {
-    if (timeRecords.length > 0 && workSchedules.length > 0) {
-      calculateDetailedReport()
-    }
-  }, [timeRecords, workSchedules])
-
-  const loadCompanyData = async () => {
-    if (!user) return
-
-    try {
-      const { data } = await supabase.from("companies").select("*").eq("user_id", user.id).single()
-      setCompany(data)
-    } catch (error) {
-      console.error("Erro ao carregar empresa:", error)
-    }
+  async function loadCompany() {
+    const { data } = await supabase.from("companies").select("*").eq("user_id", user?.id).single()
+    setCompany(data)
   }
 
-  const loadEmployees = async () => {
-    if (!user) return
-
-    try {
-      const { data: company } = await supabase.from("companies").select("id").eq("user_id", user.id).single()
-
-      if (company) {
-        const { data: employeesData } = await supabase
-          .from("employees")
-          .select("id, name, cpf")
-          .eq("company_id", company.id)
-          .order("name")
-
-        setEmployees(employeesData || [])
-      }
-    } catch (error) {
-      console.error("Erro ao carregar funcionários:", error)
-    }
+  async function loadEmployees() {
+    const { data: c } = await supabase.from("companies").select("id").eq("user_id", user?.id).single()
+    const { data: emps } = await supabase.from("employees").select("id,name,cpf").eq("company_id", c.id).order("name")
+    setEmployees(emps || [])
   }
 
-  const loadWorkSchedules = async () => {
-    if (!user) return
-
-    try {
-      const { data: company } = await supabase.from("companies").select("id").eq("user_id", user.id).single()
-
-      if (company) {
-        const { data: schedulesData } = await supabase
-          .from("work_schedules")
-          .select("*")
-          .eq("company_id", company.id)
-          .order("day_of_week")
-
-        setWorkSchedules(schedulesData || [])
-      }
-    } catch (error) {
-      console.error("Erro ao carregar horários:", error)
-    }
+  async function loadWorkSchedules() {
+    const { data: c } = await supabase.from("companies").select("id").eq("user_id", user?.id).single()
+    const { data: sched } = await supabase.from("work_schedules").select("*").eq("company_id", c.id).order("day_of_week")
+    setWorkSchedules(sched || [])
   }
 
-  const loadTimeRecords = async () => {
-    if (!selectedEmployee) return
-
+  async function loadTimeRecords() {
+    if (!selectedEmployee || !selectedRange.from || !selectedRange.to) return
     setLoading(true)
-
-    try {
-      const today = new Date()
-      let startDate: Date
-      let endDate: Date
-      
-      switch (reportPeriod) {
-        case "daily":
-          startDate = new Date(today)
-          endDate = new Date(today)
-          break
-        case "weekly":
-          startDate = new Date(today)
-          startDate.setDate(today.getDate() - today.getDay())
-          endDate = new Date(startDate)
-          endDate.setDate(startDate.getDate() + 6)
-          break
-        case "monthly":
-          startDate = new Date(today.getFullYear(), today.getMonth(), 1)
-          endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-          break
-        default:
-          return
-      }
-      
-      function formatDateToYYYYMMDD(date: Date): string {
-        const year = date.getFullYear()
-        const month = String(date.getMonth() + 1).padStart(2, "0")
-        const day = String(date.getDate()).padStart(2, "0")
-        return `${year}-${month}-${day}`
-      }
-      
-      const start = formatDateToYYYYMMDD(startDate)
-      const end = formatDateToYYYYMMDD(endDate)
-
-      console.log({
-        rawToday: new Date(),
-        startDate,
-        endDate,
-        startFormatted: formatDateToYYYYMMDD(startDate),
-        endFormatted: formatDateToYYYYMMDD(endDate),
-      })
-
-      const { data: recordsData } = await supabase
+    const start = formatISO(selectedRange.from)
+    const end = formatISO(selectedRange.to)
+    const { data } = await supabase
       .from("time_records")
-      .select(`
-        *,
-        employee:employees(name, cpf)
-      `)
+      .select("*,employee:employees(name,cpf)")
       .eq("employee_id", selectedEmployee)
       .gte("date", start)
       .lte("date", end)
       .order("date", { ascending: false })
-
-      setTimeRecords(recordsData || [])
-    } catch (error) {
-      console.error("Erro ao carregar registros:", error)
-    } finally {
-      setLoading(false)
-    }
+    setTimeRecords(data || [])
+    setLoading(false)
   }
 
-  const calculateDetailedReport = () => {
-    const today = new Date()
-    const calculations: DayCalculation[] = []
+function calculateReport() {
+  if (!selectedRange.from || !selectedRange.to) return;
 
-    // Determinar período baseado na seleção
-    let startDate: Date
-    let endDate: Date
+  // Cria datas puramente em UTC (00:00 UTC do dia selecionado)
+  const from = selectedRange.from;
+  const to   = selectedRange.to;
+  const start = new Date(Date.UTC(from.getFullYear(), from.getMonth(), from.getDate()));
+  const end   = new Date(Date.UTC(to.getFullYear(),   to.getMonth(),   to.getDate()));
+  // tornamos 'end' exclusivo
+  end.setUTCDate(end.getUTCDate() + 1);
 
-    switch (reportPeriod) {
-      case "daily":
-        startDate = new Date(today)
-        endDate = new Date(today)
-        break
-      case "weekly":
-        startDate = new Date(today)
-        startDate.setDate(today.getDate() - today.getDay())
-        endDate = new Date(startDate)
-        endDate.setDate(startDate.getDate() + 6)
-        break
-      case "monthly":
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1)
-        endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-        break
-      default:
-        return
-    }
+  const days: DayCalculation[] = [];
 
-    // Iterar por cada dia do período
-    for (let d = new Date(startDate.getTime()); d <= endDate; d = new Date(d.getTime() + 86400000)) {
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-      const dayOfWeek = d.getDay()
+  for (
+    let d = new Date(start);
+    d < end;
+    d.setUTCDate(d.getUTCDate() + 1)
+  ) {
+    // monta 'YYYY-MM-DD' direto do ISO (sempre em UTC)
+    const dateStr = d.toISOString().slice(0, 10);
+    const dow     = d.getUTCDay();
+    const sched   = workSchedules.find(s => s.day_of_week === dow) || null;
+    const rec     = timeRecords.find(r => r.date === dateStr) || null;
 
-      // Buscar horário configurado para o dia
-      const schedule = workSchedules.find((s) => s.day_of_week === dayOfWeek)
+    let exp  = 0;
+    let work = 0;
 
-      // Buscar registro de ponto para o dia
-      const record = timeRecords.find((r) => r.date === dateStr)
-
-      // Calcular horas esperadas
-      let expectedHours = 0
-      if (schedule && schedule.entry_time && schedule.exit_time) {
-        const entryMinutes = timeToMinutes(schedule.entry_time)
-        const exitMinutes = timeToMinutes(schedule.exit_time)
-        let totalMinutes = exitMinutes - entryMinutes
-
-        // Subtrair tempo de almoço se configurado
-        if (schedule.lunch_start && schedule.lunch_end) {
-          const lunchStartMinutes = timeToMinutes(schedule.lunch_start)
-          const lunchEndMinutes = timeToMinutes(schedule.lunch_end)
-          totalMinutes -= lunchEndMinutes - lunchStartMinutes
-        }
-
-        expectedHours = totalMinutes
+    if (sched?.entry_time && sched.exit_time) {
+      exp = intervalToMinutes(sched.exit_time) - intervalToMinutes(sched.entry_time);
+      if (sched.lunch_start && sched.lunch_end) {
+        exp -= intervalToMinutes(sched.lunch_end) - intervalToMinutes(sched.lunch_start);
       }
+    }
 
-      // Calcular horas trabalhadas
-      let workedHours = 0
-      if (record && record.entry_time && record.exit_time) {
-        const entryMinutes = timeToMinutes(record.entry_time)
-        const exitMinutes = timeToMinutes(record.exit_time)
-        let totalMinutes = exitMinutes - entryMinutes
-
-        // Subtrair tempo de almoço se registrado
-        if (record.lunch_start && record.lunch_end) {
-          const lunchStartMinutes = timeToMinutes(record.lunch_start)
-          const lunchEndMinutes = timeToMinutes(record.lunch_end)
-          totalMinutes -= lunchEndMinutes - lunchStartMinutes
-        }
-
-        workedHours = Math.max(0, totalMinutes)
+    if (rec?.entry_time && rec.exit_time) {
+      work = intervalToMinutes(rec.exit_time) - intervalToMinutes(rec.entry_time);
+      if (rec.lunch_start && rec.lunch_end) {
+        work -= intervalToMinutes(rec.lunch_end) - intervalToMinutes(rec.lunch_start);
       }
-
-      calculations.push({
-        date: dateStr,
-        dayOfWeek,
-        schedule,
-        record,
-        expectedHours,
-        workedHours,
-        extraHours: record ? intervalToMinutes(record.extra_hours || "0") : 0,
-        missingHours: record ? intervalToMinutes(record.missing_hours || "0") : expectedHours > 0 ? expectedHours : 0,
-      })
     }
 
-    setCalculations(calculations)
+    days.push({
+      date:           dateStr,
+      dayOfWeek:      dow,
+      schedule:       sched,
+      record:         rec,
+      expectedHours:  exp,
+      workedHours:    work,
+      extraHours:     rec ? intervalToMinutes(rec.extra_hours || "0") : 0,
+      missingHours:   rec ? intervalToMinutes(rec.missing_hours || "0") : (exp > 0 ? exp : 0),
+    });
   }
 
-  const timeToMinutes = (time: string): number => {
-    const [hours, minutes] = time.split(":").map(Number)
-    return hours * 60 + minutes
-  }
+  setCalculations(days);
+}
 
-  function parseLocalDate(dateStr: string): Date {
-    const [year, month, day] = dateStr.split("-").map(Number)
-    return new Date(year, month - 1, day)
-  }
 
-  const generatePDFReportHandler = async () => {
-    if (!selectedEmployee || !company) return
 
-    const employee = employees.find((e) => e.id === selectedEmployee)
-    if (!employee) return
-
-    function parseLocalDate(dateStr: string): Date {
-      const [y, m, d] = dateStr.split("-").map(Number)
-      return new Date(y, m - 1, d)
+  // força to = from quando clica duas vezes no mesmo dia
+  function handleRangeSelect(range: { from?: Date; to?: Date }) {
+    if (range.from && !range.to) {
+      setSelectedRange({ from: range.from, to: range.from })
+    } else {
+      setSelectedRange(range)
     }
+    // limpa tabela enquanto seleciona
+    setTimeRecords([])
+    setCalculations([])
+  }
 
-    // Determinar período
-    const today = new Date()
-    let startDate: Date
-    let endDate: Date
+  async function generatePDFReportHandler() {
+    if (!company || !selectedEmployee || !selectedRange.from || !selectedRange.to) return
 
-    switch (reportPeriod) {
-      case "daily":
-        startDate = new Date(today)
-        endDate = new Date(today)
-        break
-      case "weekly":
-        startDate = new Date(today)
-        startDate.setDate(today.getDate() - today.getDay())
-        endDate = new Date(startDate)
-        endDate.setDate(startDate.getDate() + 6)
-        break
-      case "monthly":
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1)
-        endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-        break
-      default:
-        return
-    }
+    const emp = employees.find(e => e.id === selectedEmployee)!
+    // organiza por dia da semana para passar ao PDF
+    const workByDay: Record<number, WorkSchedule> = {}
+    workSchedules.forEach(s => (workByDay[s.day_of_week] = s))
 
-    // Organizar horários por dia da semana
-    const workScheduleByDay: { [key: number]: any } = {}
-    workSchedules.forEach((schedule) => {
-      workScheduleByDay[schedule.day_of_week] = schedule
+    const reportRecords = calculations.map(c => ({
+      date:         c.date,
+      entry_time:   c.record?.entry_time   ?? "",
+      lunch_start:  c.record?.lunch_start  ?? "",
+      lunch_end:    c.record?.lunch_end    ?? "",
+      exit_time:    c.record?.exit_time    ?? "",
+      extra_hours:   formatMinutesToHours(c.extraHours),
+      missing_hours: formatMinutesToHours(c.missingHours),
+    }))
+
+    await generatePDFReport({
+      company: { name: company.name, cnpj: company.cnpj },
+      employee: { name: emp.name, cpf: emp.cpf },
+      period: {
+        startDate: formatISO(selectedRange.from),
+        endDate: formatISO(selectedRange.to),
+      },
+      workSchedule: workByDay,
+      timeRecords: reportRecords,
     })
-
-    function formatLocalDate(date: Date): string {
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, "0")
-      const day = String(date.getDate()).padStart(2, "0")
-      return `${year}-${month}-${day}`
-    }    
-
-    function normalizeDateStrings(records: TimeRecord[]): TimeRecord[] {
-      return records.map((r) => ({
-        ...r,
-        date: r.date // já está no formato correto "YYYY-MM-DD"
-      }))
-    }
-
-    // importe esta função no topo do arquivo
-    function minutesToTime(minutes: number): string {
-      const h = Math.floor(minutes / 60);
-      const m = minutes % 60;
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    }
-
-    const reportRecords = calculations.map(calc => ({
-      date:    calc.date,
-      entry_time:   calc.record?.entry_time,
-      lunch_start:  calc.record?.lunch_start,
-      lunch_end:    calc.record?.lunch_end,
-      exit_time:    calc.record?.exit_time,
-      // pego direto do cálculo, em minutos → formato “HH:MM”
-      extra_hours:   minutesToTime(calc.extraHours),
-      missing_hours: minutesToTime(calc.missingHours),
-    }));
-    
-    const reportData = {
-      company:     { name: company.name, cnpj: company.cnpj },
-      employee:    { name: employee.name, cpf: employee.cpf },
-      period:      { startDate: formatLocalDate(startDate), endDate: formatLocalDate(endDate) },
-      workSchedule: workScheduleByDay,
-      timeRecords:  reportRecords,      // ← aqui!
-    };
-
-    try {
-      await generatePDFReport(reportData)
-    } catch (error) {
-      console.error("Erro ao gerar PDF:", error)
-      // Adicionar toast de erro se necessário
-    }
   }
 
-  const totalExpected = calculations.reduce((sum, calc) => sum + calc.expectedHours, 0)
-  const totalWorked = calculations.reduce((sum, calc) => sum + calc.workedHours, 0)
-  const totalExtra = calculations.reduce((sum, calc) => sum + calc.extraHours, 0)
-  const totalMissing = calculations.reduce((sum, calc) => sum + calc.missingHours, 0)
+  // Totais
+  const totalExpected = calculations.reduce((s, c) => s + c.expectedHours, 0)
+  const totalWorked   = calculations.reduce((s, c) => s + c.workedHours, 0)
+  const totalExtra    = calculations.reduce((s, c) => s + c.extraHours, 0)
+  const totalMissing  = calculations.reduce((s, c) => s + c.missingHours, 0)
 
   return (
     <div className="space-y-6">
+      {/* Filtros */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -399,39 +222,60 @@ export function ReportsTab() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="space-y-2">
+            {/* Funcionário */}
+            <div>
               <label className="text-sm font-medium">Funcionário</label>
               <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um funcionário" />
                 </SelectTrigger>
                 <SelectContent>
-                  {employees.map((employee) => (
-                    <SelectItem key={employee.id} value={employee.id}>
-                      {employee.name}
+                  {employees.map(e => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-2">
+            {/* Período */}
+            <div>
               <label className="text-sm font-medium">Período</label>
-              <Select
-                value={reportPeriod}
-                onValueChange={(value: "daily" | "weekly" | "monthly") => setReportPeriod(value)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Diário</SelectItem>
-                  <SelectItem value="weekly">Semanal</SelectItem>
-                  <SelectItem value="monthly">Mensal</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center space-x-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedRange.from && selectedRange.to
+                        ? `${format(selectedRange.from, "dd/MM/yyyy")} → ${format(selectedRange.to, "dd/MM/yyyy")}`
+                        : <span>Escolha o período</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0">
+                    <Calendar
+                      mode="range"
+                      selected={selectedRange}
+                      onSelect={handleRangeSelect}
+                      locale={ptBR}
+                      components={{ Caption: CustomCaption }}
+                      classNames={{
+                        head_row: "grid grid-cols-7",
+                        head_cell: "text-center text-muted-foreground text-xs font-semibold uppercase",
+                        row: "grid grid-cols-7 w-full mb-1",
+                        cell: "aspect-square w-full flex items-center justify-center rounded-md text-sm hover:bg-accent hover:text-accent-foreground",
+                        day_selected: "bg-primary text-white hover:bg-primary/90",
+                        day_today: "border border-primary",
+                        day_outside: "text-muted-foreground opacity-50",
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
+                {/* Botão de reset */}
+                <Button variant="ghost" size="sm" onClick={() => setSelectedRange({})}>
+                  Limpar
+                </Button>
+              </div>
             </div>
-
             <div className="flex items-end">
               <Button onClick={generatePDFReportHandler} disabled={!selectedEmployee || loading} className="w-full">
                 <Download className="h-4 w-4 mr-2" />
@@ -439,63 +283,39 @@ export function ReportsTab() {
               </Button>
             </div>
           </div>
-
+          {/* Cards de totais */}
           {selectedEmployee && calculations.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center space-x-2">
-                    <Clock className="h-4 w-4 text-blue-600" />
-                    <div>
-                      <div className="text-2xl font-bold text-blue-600">{formatMinutesToHours(totalExpected)}</div>
-                      <p className="text-sm text-muted-foreground">Deveria Trabalhar</p>
+              {[
+                { icon: Clock, value: totalExpected, label: "Deveria Trabalhar", color: "blue-600" },
+                { icon: Clock, value: totalWorked,   label: "Horas Trabalhadas", color: "gray-600" },
+                { icon: TrendingUp, value: totalExtra, label: "Horas Extras", color: "green-600" },
+                { icon: TrendingDown, value: totalMissing, label: "Faltas", color: "red-600" },
+              ].map(({ icon: Icon, value, label, color }) => (
+                <Card key={label}>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center space-x-2">
+                      <Icon className={`h-4 w-4 text-${color}`} />
+                      <div>
+                        <div className={`text-2xl font-bold text-${color}`}>
+                          {formatMinutesToHours(value)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{label}</p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center space-x-2">
-                    <Clock className="h-4 w-4 text-gray-600" />
-                    <div>
-                      <div className="text-2xl font-bold text-gray-600">{formatMinutesToHours(totalWorked)}</div>
-                      <p className="text-sm text-muted-foreground">Horas Trabalhadas</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center space-x-2">
-                    <TrendingUp className="h-4 w-4 text-green-600" />
-                    <div>
-                      <div className="text-2xl font-bold text-green-600">{formatMinutesToHours(totalExtra)}</div>
-                      <p className="text-sm text-muted-foreground">Horas Extras</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center space-x-2">
-                    <TrendingDown className="h-4 w-4 text-red-600" />
-                    <div>
-                      <div className="text-2xl font-bold text-red-600">{formatMinutesToHours(totalMissing)}</div>
-                      <p className="text-sm text-muted-foreground">Faltas</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
-
+      {/* Tabela detalhada */}
       {selectedEmployee && calculations.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Calendar className="h-5 w-5 mr-2" />
+              <Clock className="h-5 w-5 mr-2" />
               Detalhamento por Dia
             </CardTitle>
           </CardHeader>
@@ -507,50 +327,40 @@ export function ReportsTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data</TableHead>
-                    <TableHead>Deveria Trabalhar</TableHead>
-                    <TableHead>Horas Trabalhadas</TableHead>
-                    <TableHead>Horas Extras</TableHead>
+                    <TableHead>Deveria</TableHead>
+                    <TableHead>Trabalhadas</TableHead>
+                    <TableHead>Extras</TableHead>
                     <TableHead>Faltas</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {calculations.map((calc) => (
+                  {calculations.map(calc => (
                     <TableRow key={calc.date}>
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {parseLocalDate(calc.date).toLocaleDateString("pt-BR")}
+                            {new Date(calc.date + "T00:00:00").toLocaleDateString("pt-BR")}
+
                           </div>
                           <div className="text-sm text-gray-500">
-                          {parseLocalDate(calc.date).toLocaleDateString("pt-BR", { weekday: "short" })}
+                            {new Date(calc.date + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "short" })}
+
                           </div>
                         </div>
                       </TableCell>
+                      <TableCell>{formatMinutesToHours(calc.expectedHours)}</TableCell>
+                      <TableCell>{formatMinutesToHours(calc.workedHours)}</TableCell>
+                      <TableCell className="text-green-600">{formatMinutesToHours(calc.extraHours)}</TableCell>
+                      <TableCell className="text-red-600">{formatMinutesToHours(calc.missingHours)}</TableCell>
                       <TableCell>
-                        <span className="text-blue-600 font-medium">{formatMinutesToHours(calc.expectedHours)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-gray-600 font-medium">{formatMinutesToHours(calc.workedHours)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-green-600 font-medium">{formatMinutesToHours(calc.extraHours)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-red-600 font-medium">{formatMinutesToHours(calc.missingHours)}</span>
-                      </TableCell>
-                      <TableCell>
-                        {calc.record ? (
-                          calc.record.entry_time && calc.record.exit_time ? (
-                            <span className="text-green-600 text-sm">Completo</span>
-                          ) : (
-                            <span className="text-yellow-600 text-sm">Parcial</span>
-                          )
-                        ) : calc.expectedHours > 0 ? (
-                          <span className="text-red-600 text-sm">Ausente</span>
-                        ) : (
-                          <span className="text-gray-500 text-sm">Sem expediente</span>
-                        )}
+                        {calc.record
+                          ? calc.record.entry_time && calc.record.exit_time
+                            ? <span className="text-green-600">Completo</span>
+                            : <span className="text-yellow-600">Parcial</span>
+                          : calc.expectedHours > 0
+                            ? <span className="text-red-600">Ausente</span>
+                            : <span className="text-gray-500">Sem expediente</span>}
                       </TableCell>
                     </TableRow>
                   ))}

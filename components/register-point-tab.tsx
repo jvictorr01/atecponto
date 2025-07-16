@@ -3,11 +3,16 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover" // new
+import { format } from "date-fns"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar" // neww
+import { CaptionProps } from "react-day-picker" // new
+import { ptBR } from "date-fns/locale" // new
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +31,8 @@ import {
   User,
   CheckCircle,
   AlertCircle,
-  Calendar,
+  //Calendar,
+  CalendarIcon, //new
   TrendingUp,
   TrendingDown,
   RefreshCw,
@@ -66,17 +72,52 @@ interface WorkSchedule {
   exit_time: string | null
 }
 
+function CustomCaption({ displayMonth, locale, classNames, onMonthChange }: CaptionProps) {
+  const months = Array.from({ length: 12 }, (_, i) =>
+    new Date(2025, i).toLocaleString(locale ?? "pt-BR", { month: "long" })
+  )
+
+  return (
+    <div className="flex justify-center items-center gap-4 mb-4">
+      <select
+        className="rounded-md border px-2 py-1 text-sm capitalize"
+        value={displayMonth.getMonth()}
+        onChange={(e) => onMonthChange?.(new Date(displayMonth.getFullYear(), +e.target.value))}
+      >
+        {months.map((month, i) => (
+          <option key={month} value={i}>
+            {month}
+          </option>
+        ))}
+      </select>
+
+      <select
+        className="rounded-md border px-2 py-1 text-sm"
+        value={displayMonth.getFullYear()}
+        onChange={(e) => onMonthChange?.(new Date(+e.target.value, displayMonth.getMonth()))}
+      >
+        {Array.from({ length: 11 }, (_, i) => 2020 + i).map((year) => (
+          <option key={year} value={year}>
+            {year}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 export function RegisterPointTab() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selectedEmployee, setSelectedEmployee] = useState<string>("")
-//  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0])
   const getLocalISODate = (date: Date = new Date()): string => {
     const year = date.getFullYear()
     const month = String(date.getMonth() + 1).padStart(2, "0")
     const day = String(date.getDate()).padStart(2, "0")
     return `${year}-${month}-${day}`
   }
-const [selectedDate, setSelectedDate] = useState<string>(getLocalISODate())
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalISODate()) 
+  const [year, month, day] = selectedDate.split("-").map(Number) // new 
+  const selectedDateObject = new Date(year, month - 1, day) // ✅ Corrige o fuso // new
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([])
   const [workSchedule, setWorkSchedule] = useState<WorkSchedule | null>(null)
   const [loading, setLoading] = useState(false)
@@ -489,22 +530,43 @@ const [selectedDate, setSelectedDate] = useState<string>(getLocalISODate())
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Data</Label>
-                <Select value={selectedDate} onValueChange={setSelectedDate}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o dia" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {monthDays.map((day) => (
-                      <SelectItem key={day.value} value={day.value}>
-                        <div className="flex items-center space-x-2">
-                          <Calendar className="h-4 w-4" />
-                          <span>{day.label}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal text-muted-foreground h-10"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      <span>
+                        {selectedDate ? format(selectedDateObject, "dd/MM/yyyy") : "Selecione a data"}
+                      </span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 border rounded-xl shadow-lg w-auto z-50 bg-white">
+                      <Calendar
+                        mode="single"
+                        selected={selectedDateObject}
+                        onSelect={(date) => {
+                          if (date) setSelectedDate(getLocalISODate(date))
+                        }}
+                        locale={ptBR}
+                        components={{
+                          Caption: CustomCaption, // 👈 novo caption bonitão
+                        }}
+                        classNames={{
+                          head_row: "grid grid-cols-7",
+                          head_cell: "text-center text-muted-foreground text-xs font-semibold uppercase",
+                          row: "grid grid-cols-7 w-full mb-1",
+                          cell: "aspect-square w-full flex items-center justify-center rounded-md text-sm hover:bg-accent hover:text-accent-foreground focus:outline-none",
+                          day_selected: "bg-primary text-white hover:bg-primary/90",
+                          day_today: "border border-primary",
+                          day_outside: "text-muted-foreground opacity-50",
+                        }}
+                      />
+                  </PopoverContent>
+                </Popover>
               </div>
+
 
               {/* Seleção de Funcionário */}
               <div className="space-y-2">

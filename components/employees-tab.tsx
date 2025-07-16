@@ -222,6 +222,7 @@ export function EmployeesTab({ onEmployeeCountChange }: EmployeesTabProps) {
           </Dialog>
         </div>
       </CardHeader>
+
       <CardContent>
         {employees.length === 0 ? (
           <div className="text-center py-8 text-gray-500">Nenhum funcionário cadastrado ainda.</div>
@@ -261,7 +262,21 @@ export function EmployeesTab({ onEmployeeCountChange }: EmployeesTabProps) {
             </TableBody>
           </Table>
         )}
+
+        {/* Mensagem adicional */}
+        <div className="text-center text-sm text-muted-foreground mt-6">
+          Para cadastrar mais funcionários, faça um upgrade em{" "}
+          <a
+            href="https://www.atecponto.com.br"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:underline"
+          >
+            www.atecponto.com.br
+          </a>
+        </div>
       </CardContent>
     </Card>
+    
   )
 }

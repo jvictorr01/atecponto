@@ -263,50 +263,68 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
     const record = data.timeRecords.find((r) => r.date === dateStr)
     const schedule = data.workSchedule[dayOfWeek]
 
+    // 1) LOG RAW
+    console.log(`[PDF][${dateStr}] raw record:`, record)
+
     // Calcular horas
     let normalHours = "00:00"
-    let extraHours = "00:00"
-    let faltaHours = "00:00"
-
-    if (schedule && schedule.entry_time && schedule.exit_time) {
-      if (schedule && schedule.entry_time && schedule.exit_time) {
-        // Apenas exibe o “Normal” igual ao esperado:
-        const expectedEntry   = timeToMinutes(schedule.entry_time)
-        const expectedExit    = timeToMinutes(schedule.exit_time)
-        let expectedMinutes   = expectedExit - expectedEntry
-        if (schedule.lunch_start && schedule.lunch_end) {
-          expectedMinutes -= timeToMinutes(schedule.lunch_end) - timeToMinutes(schedule.lunch_start)
-        }
-        normalHours = minutesToTime(expectedMinutes)
-        totalNormal += expectedMinutes
-      
-        // **Imprime direto** o extra e a falta que vieram no objeto:
-        extraHours = record?.extra_hours   || "00:00"
-        faltaHours = record?.missing_hours || "00:00"
-      
-        // Acumula totais convertendo de “HH:MM” pra minutos:
-        const [ehH, ehM] = extraHours.split(":").map(Number)
-        totalExtra += ehH * 60 + ehM
-        const [fhH, fhM] = faltaHours.split(":").map(Number)
-        totalFalta += fhH * 60 + fhM
-        if (fhH + fhM > 0) totalFaltas++
+    
+    if (schedule?.entry_time && schedule.exit_time) {
+      const entryMin = timeToMinutes(schedule.entry_time)
+      const exitMin  = timeToMinutes(schedule.exit_time)
+      let expected  = exitMin - entryMin
+      if (schedule.lunch_start && schedule.lunch_end) {
+        expected -= timeToMinutes(schedule.lunch_end) - timeToMinutes(schedule.lunch_start)
       }
+      normalHours = minutesToTime(expected)
+      totalNormal += expected
+    }
 
-      }
+    // 2) extra e falta: sempre pego do record, que já vem em "HH:MM"
+  /*  const extraHours = record?.extra_hours   ?? "00:00"
+    const faltaHours = record?.missing_hours ?? "00:00" */
+    const rawExtra = record?.extra_hours   ?? "00:00"
+    const rawFalta = record?.missing_hours ?? "00:00"
 
-    // Linha da tabela
+    // normalizador: "8h30m" → "08:30", mas deixa "HH:MM" intacto
+    const normalize = (s: string) => {
+      const m = s.match(/^(\d+)h(\d+)m$/)
+      return m
+        ? `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`
+        : s
+    }
+
+    const extraHours = normalize(rawExtra)
+    const faltaHours = normalize(rawFalta)
+
+    // 3) acumula totais a partir desse formato
+    {
+      const [ehH, ehM] = extraHours.split(":").map(n => parseInt(n, 10) || 0)
+      totalExtra += ehH * 60 + ehM
+
+      const [fhH, fhM] = faltaHours.split(":").map(n => parseInt(n, 10) || 0)
+      totalFalta += fhH * 60 + fhM
+      // —––––––– AQUI, antes de acumular, insira seus logs:
+      console.log(`[PDF][${dateStr}] extraHours='${extraHours}' → extraMin=`, totalExtra)
+      console.log(`[PDF][${dateStr}] faltaHours='${faltaHours}' → faltaMin=`, totalFalta)
+
+      if (fhH * 60 + fhM > 0) totalFaltas++
+    }
+    
+
+    // por fim, monta a linha da tabela:
     const rowData = [
       `${dayNumber}/${monthNumber} ${dayName}`,
       record?.entry_time || "00:00",
       record?.lunch_start || "00:00",
-      record?.lunch_end || "00:00",
-      record?.exit_time || "00:00",
-      "00:00", // Extra entrada
-      "00:00", // Extra saída
+      record?.lunch_end   || "00:00",
+      record?.exit_time   || "00:00",
+      "00:00", // Extra entrada (vazio)
+      "00:00", // Extra saída  (vazio)
       normalHours,
       extraHours,
       faltaHours,
-      "", // Observações
+      ""       // Observações
     ]
 
     currentX = 10
@@ -375,8 +393,18 @@ function timeToMinutes(time: string): number {
   return hours * 60 + minutes
 }
 
-function minutesToTime(minutes: number): string {
+/* function minutesToTime(minutes: number): string {
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
   return `${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`
+} */ // original
+
+// 3) minutesToTime com log
+function minutesToTime(minutes: number): string {
+  console.log(`[minutesToTime] input=`, minutes)
+  const hours = Math.floor(minutes / 60)
+  const mins  = minutes % 60
+  const out   = `${String(hours).padStart(2,"0")}:${String(mins).padStart(2,"0")}`
+  console.log(`[minutesToTime] output=`, out)
+  return out
 }

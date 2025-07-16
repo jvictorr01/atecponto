@@ -217,6 +217,18 @@ export function TimeTrackingTab() {
               </Card>
             ))}
           </div>
+          {/* Mensagem adicional */}
+                  <div className="text-center text-sm text-muted-foreground mt-6">
+                    Para cadastrar mais cargas horarias, faça um upgrade em{" "}
+                    <a
+                      href="https://www.atecponto.com.br"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      www.atecponto.com.br
+                    </a>
+                  </div>
         </CardContent>
       </Card>
 
