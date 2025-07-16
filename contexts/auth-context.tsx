@@ -241,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   setProfile(null)
 
   // Redireciona para a tela de login
-  window.location.href = "/login" // ou useRouter().push("/login") se quiser
+  window.location.href = "" // ou useRouter().push("/login") se quiser
 } // logou novo
 
   return (
