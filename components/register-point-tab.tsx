@@ -72,36 +72,61 @@ interface WorkSchedule {
   exit_time: string | null
 }
 
-function CustomCaption({ displayMonth, locale, classNames, onMonthChange }: CaptionProps) {
+
+interface CustomCaptionProps extends CaptionProps {
+  onMonthChange?: (date: Date) => void;
+}
+export function CustomCaption({ displayMonth, onMonthChange }: CustomCaptionProps) {
   const months = Array.from({ length: 12 }, (_, i) =>
-    new Date(2025, i).toLocaleString(locale ?? "pt-BR", { month: "long" })
+    new Date(displayMonth.getFullYear(), i).toLocaleString("pt-BR", { month: "long" })
   )
+  const years = Array.from({ length: 11 }, (_, i) => 2020 + i)
+
+  const handleMonthChange = (monthIndex: string) => {
+    const newDate = new Date(displayMonth.getFullYear(), parseInt(monthIndex))
+    onMonthChange?.(newDate)
+  }
+
+  const handleYearChange = (yearValue: string) => {
+    const newDate = new Date(parseInt(yearValue), displayMonth.getMonth())
+    onMonthChange?.(newDate)
+  }
 
   return (
     <div className="flex justify-center items-center gap-4 mb-4">
-      <select
-        className="rounded-md border px-2 py-1 text-sm capitalize"
-        value={displayMonth.getMonth()}
-        onChange={(e) => onMonthChange?.(new Date(displayMonth.getFullYear(), +e.target.value))}
+      {/* Mês */}
+      <Select
+        value={String(displayMonth.getMonth())}
+        onValueChange={handleMonthChange}
       >
-        {months.map((month, i) => (
-          <option key={month} value={i}>
-            {month}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className="rounded-md border px-2 py-1 text-sm capitalize w-32">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {months.map((month, index) => (
+            <SelectItem key={index} value={String(index)}>
+              {month}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <select
-        className="rounded-md border px-2 py-1 text-sm"
-        value={displayMonth.getFullYear()}
-        onChange={(e) => onMonthChange?.(new Date(+e.target.value, displayMonth.getMonth()))}
+      {/* Ano */}
+      <Select
+        value={String(displayMonth.getFullYear())}
+        onValueChange={handleYearChange}
       >
-        {Array.from({ length: 11 }, (_, i) => 2020 + i).map((year) => (
-          <option key={year} value={year}>
-            {year}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className="rounded-md border px-2 py-1 text-sm w-20">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {years.map((year) => (
+            <SelectItem key={year} value={String(year)}>
+              {year}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }
@@ -115,9 +140,9 @@ export function RegisterPointTab() {
     const day = String(date.getDate()).padStart(2, "0")
     return `${year}-${month}-${day}`
   }
-  const [selectedDate, setSelectedDate] = useState<string>(getLocalISODate()) 
-  const [year, month, day] = selectedDate.split("-").map(Number) // new 
-  const selectedDateObject = new Date(year, month - 1, day) // ✅ Corrige o fuso // new
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const selectedDateObject = selectedDate
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date()) // new
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([])
   const [workSchedule, setWorkSchedule] = useState<WorkSchedule | null>(null)
   const [loading, setLoading] = useState(false)
@@ -133,6 +158,7 @@ export function RegisterPointTab() {
   const [deletingRecord, setDeletingRecord] = useState<{ record: TimeRecord; pointType: string } | null>(null)
   const { user } = useAuth()
   const { toast } = useToast()
+  
 
   useEffect(() => {
     loadEmployees()
@@ -173,7 +199,7 @@ export function RegisterPointTab() {
           *,
           employee:employees(name, cpf)
         `)
-        .eq("date", selectedDate)
+        .eq("date", getLocalISODate(selectedDate))
         .in(
           "employee_id",
           employees.map((e) => e.id),
@@ -194,9 +220,9 @@ export function RegisterPointTab() {
 
       if (company) {
         // Corrigir para garantir data local e não UTC
-        const [year, month, day] = selectedDate.split("-").map(Number)
-        const localDate = new Date(year, month - 1, day)
-        const dayOfWeek = localDate.getDay()
+        if (!selectedDate) return
+
+        const dayOfWeek = selectedDate.getDay()
         const { data: scheduleData } = await supabase
           .from("work_schedules")
           .select("*")
@@ -260,7 +286,7 @@ export function RegisterPointTab() {
         .from("time_records")
         .select("*")
         .eq("employee_id", selectedEmployee)
-        .eq("date", selectedDate)
+        .eq("date", getLocalISODate(selectedDate))
         .single()
 
       const updateData = {
@@ -276,7 +302,7 @@ export function RegisterPointTab() {
         // Criar novo registro
         const { error } = await supabase.from("time_records").insert({
           employee_id: selectedEmployee,
-          date: selectedDate.substring(0, 10),
+          date: getLocalISODate(selectedDate),
           ...updateData,
         })
 
@@ -286,7 +312,7 @@ export function RegisterPointTab() {
       // Chamar função de cálculo manualmente para garantir
       await supabase.rpc("calculate_time_differences", {
         p_employee_id: selectedEmployee,
-        p_date: selectedDate,
+        p_date: getLocalISODate(selectedDate),
       })
 
       const typeNames = {
@@ -340,7 +366,7 @@ export function RegisterPointTab() {
       // Recalcular horas
       await supabase.rpc("calculate_time_differences", {
         p_employee_id: editingRecord.employee_id,
-        p_date: selectedDate,
+        p_date: getLocalISODate(selectedDate),
       })
 
       const typeNames = {
@@ -388,7 +414,7 @@ export function RegisterPointTab() {
       // Recalcular horas
       await supabase.rpc("calculate_time_differences", {
         p_employee_id: deletingRecord.record.employee_id,
-        p_date: selectedDate,
+        p_date: getLocalISODate(selectedDate),
       })
 
       const typeNames = {
@@ -423,7 +449,7 @@ export function RegisterPointTab() {
     try {
       await supabase.rpc("calculate_time_differences", {
         p_employee_id: employeeId,
-        p_date: selectedDate,
+        p_date: getLocalISODate(selectedDate),
       })
 
       toast({
@@ -450,17 +476,15 @@ export function RegisterPointTab() {
     exit_time: "Saída",
   }
 
-  function formatDateWithWeekday(dateString: string): string {
-    const [year, month, day] = dateString.split("-").map(Number)
-    const localDate = new Date(year, month - 1, day)
-  
-    return localDate.toLocaleDateString("pt-BR", {
-      weekday: "long",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
-  }
+    function formatDateWithWeekday(date: Date): string {
+        if (!date) return ""
+      return date.toLocaleDateString("pt-BR", {
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    }
 
   // Gerar opções de dias do mês atual
   const currentMonth = new Date().getMonth()
@@ -538,20 +562,32 @@ export function RegisterPointTab() {
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       <span>
-                        {selectedDate ? format(selectedDateObject, "dd/MM/yyyy") : "Selecione a data"}
+                        {selectedDate ? format(selectedDate, "dd/MM/yyyy") : "Selecione a data"}
                       </span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="p-0 border rounded-xl shadow-lg w-auto z-50 bg-white">
                       <Calendar
                         mode="single"
-                        selected={selectedDateObject}
-                        onSelect={(date) => {
-                          if (date) setSelectedDate(getLocalISODate(date))
-                        }}
+                        selected={selectedDate}
+                        onSelect={(d) => {
+                              if (d) {
+                                setSelectedDate(d)
+                                setCalendarMonth(d)
+                              }
+                            }}
+                        month={calendarMonth}
+                        onMonthChange={(m) => {
+                          setCalendarMonth(m)
+                        }}                  
                         locale={ptBR}
                         components={{
-                          Caption: CustomCaption, // 👈 novo caption bonitão
+                          Caption: (props) => (
+                            <CustomCaption
+                              {...props}
+                              onMonthChange={(m) => setCalendarMonth(m)}
+                            />
+                          )
                         }}
                         classNames={{
                           head_row: "grid grid-cols-7",

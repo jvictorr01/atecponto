@@ -180,58 +180,59 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
   // Larguras ajustadas para deixar margem direita (total ~170mm, deixando 20mm de margem)
   const mainColWidths = [22, 14, 14, 14, 14, 14, 14, 16, 16, 16, 36]
 
-  // Primeira linha de headers
-  currentX = 10
-  const mainHeaders = ["", "Faixa 1", "", "Faixa 2", "", "Extra", "", "Total", "Total", "Total", "Observações"]
+  // Função para desenhar os cabeçalhos da tabela principal
+  function drawMainTableHeaders(startY: number) {
+    let currentX = 10;
+    // Primeira linha de headers
+    const mainHeaders = ["", "Faixa 1", "", "Faixa 2", "", "Extra", "", "Total", "Total", "Total", "Observações"];
+    mainHeaders.forEach((header, index) => {
+      if (header && (index === 0 || index === 7 || index === 8 || index === 9 || index === 10)) {
+        doc.rect(currentX, startY, mainColWidths[index], 4)
+        doc.text(header, currentX + mainColWidths[index] / 2, startY + 2.5, { align: "center" })
+      } else if (header === "Faixa 1") {
+        doc.rect(currentX, startY, mainColWidths[index] + mainColWidths[index + 1], 4)
+        doc.text(header, currentX + (mainColWidths[index] + mainColWidths[index + 1]) / 2, startY + 2.5, {
+          align: "center",
+        })
+      } else if (header === "Faixa 2") {
+        doc.rect(currentX, startY, mainColWidths[index] + mainColWidths[index + 1], 4)
+        doc.text(header, currentX + (mainColWidths[index] + mainColWidths[index + 1]) / 2, startY + 2.5, {
+          align: "center",
+        })
+      } else if (header === "Extra") {
+        doc.rect(currentX, startY, mainColWidths[index] + mainColWidths[index + 1], 4)
+        doc.text(header, currentX + (mainColWidths[index] + mainColWidths[index + 1]) / 2, startY + 2.5, {
+          align: "center",
+        })
+      }
+      currentX += mainColWidths[index]
+    })
+    // Segunda linha de headers
+    currentX = 10;
+    const subHeaders = [
+      "Data",
+      "Entrada",
+      "Saída",
+      "Entrada",
+      "Saída",
+      "Entrada",
+      "Saída",
+      "Normal",
+      "Extra",
+      "Falta",
+      "Observações",
+    ];
+    const subHeaderY = startY + 4;
+    subHeaders.forEach((header, index) => {
+      doc.rect(currentX, subHeaderY, mainColWidths[index], 4)
+      doc.text(header, currentX + mainColWidths[index] / 2, subHeaderY + 2.5, { align: "center" })
+      currentX += mainColWidths[index]
+    })
+    return subHeaderY + 4;
+  }
 
-  mainHeaders.forEach((header, index) => {
-    if (header && (index === 0 || index === 7 || index === 8 || index === 9 || index === 10)) {
-      doc.rect(currentX, currentY, mainColWidths[index], 4)
-      doc.text(header, currentX + mainColWidths[index] / 2, currentY + 2.5, { align: "center" })
-    } else if (header === "Faixa 1") {
-      doc.rect(currentX, currentY, mainColWidths[index] + mainColWidths[index + 1], 4)
-      doc.text(header, currentX + (mainColWidths[index] + mainColWidths[index + 1]) / 2, currentY + 2.5, {
-        align: "center",
-      })
-    } else if (header === "Faixa 2") {
-      doc.rect(currentX, currentY, mainColWidths[index] + mainColWidths[index + 1], 4)
-      doc.text(header, currentX + (mainColWidths[index] + mainColWidths[index + 1]) / 2, currentY + 2.5, {
-        align: "center",
-      })
-    } else if (header === "Extra") {
-      doc.rect(currentX, currentY, mainColWidths[index] + mainColWidths[index + 1], 4)
-      doc.text(header, currentX + (mainColWidths[index] + mainColWidths[index + 1]) / 2, currentY + 2.5, {
-        align: "center",
-      })
-    }
-    currentX += mainColWidths[index]
-  })
-
-  currentY += 4
-
-  // Segunda linha de headers
-  currentX = 10
-  const subHeaders = [
-    "Data",
-    "Entrada",
-    "Saída",
-    "Entrada",
-    "Saída",
-    "Entrada",
-    "Saída",
-    "Normal",
-    "Extra",
-    "Falta",
-    "Observações",
-  ]
-
-  subHeaders.forEach((header, index) => {
-    doc.rect(currentX, currentY, mainColWidths[index], 4)
-    doc.text(header, currentX + mainColWidths[index] / 2, currentY + 2.5, { align: "center" })
-    currentX += mainColWidths[index]
-  })
-
-  currentY += 4
+  // Desenhar cabeçalhos da tabela principal na primeira página
+  currentY = drawMainTableHeaders(currentY);
 
   // Dados dos registros de ponto
   doc.setFont("arial", "normal")
@@ -252,7 +253,14 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
   let totalFalta = 0
   let totalFaltas = 0
 
-  while (currentDate <= endDate2 && currentY < pageHeight - 50) {
+  while (currentDate <= endDate2) {
+    // Se não houver espaço suficiente para mais uma linha, adiciona nova página e redesenha cabeçalhos
+    if (currentY > pageHeight - 50) {
+      doc.addPage()
+      currentY = 20 // margem superior para nova página
+      currentY = drawMainTableHeaders(currentY)
+    }
+
     const dateStr = currentDate.toISOString().split("T")[0]
     const dayOfWeek = currentDate.getDay()
     const dayName = DAYS_OF_WEEK[dayOfWeek]
@@ -281,8 +289,6 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
     }
 
     // 2) extra e falta: sempre pego do record, que já vem em "HH:MM"
-  /*  const extraHours = record?.extra_hours   ?? "00:00"
-    const faltaHours = record?.missing_hours ?? "00:00" */
     const rawExtra = record?.extra_hours   ?? "00:00"
     const rawFalta = record?.missing_hours ?? "00:00"
 
@@ -327,7 +333,7 @@ export async function generatePDFReport(data: PDFReportData): Promise<void> {
       ""       // Observações
     ]
 
-    currentX = 10
+    let currentX = 10
     rowData.forEach((cell, index) => {
       doc.rect(currentX, currentY, mainColWidths[index], 4)
       doc.text(cell, currentX + mainColWidths[index] / 2, currentY + 2.5, { align: "center" })

@@ -21,9 +21,14 @@ interface TimeRecord { id: string; date: string; entry_time: string|null; lunch_
 interface WorkSchedule { day_of_week: number; entry_time: string|null; lunch_start: string|null; lunch_end: string|null; exit_time: string|null }
 interface DayCalculation { date: string; dayOfWeek: number; schedule: WorkSchedule|null; record: TimeRecord|null; expectedHours: number; workedHours: number; extraHours: number; missingHours: number }
 
-function CustomCaption({ displayMonth, locale, onMonthChange }: CaptionProps) {
+interface CustomCaptionProps extends CaptionProps {
+  onMonthChange?: (date: Date) => void;
+  locale?: any;
+}
+
+function CustomCaption({ displayMonth, locale, onMonthChange }: CustomCaptionProps) {
   const months = Array.from({ length: 12 }, (_, i) =>
-    new Date(2025, i).toLocaleString(locale ?? "pt-BR", { month: "long" })
+    new Date(displayMonth.getFullYear(), i).toLocaleString(locale ?? "pt-BR", { month: "long" })
   )
   return (
     <div className="flex justify-center items-center gap-4 mb-4">
@@ -63,6 +68,7 @@ export function ReportsTab() {
   const [loading, setLoading] = useState(false)
   const [calculations, setCalculations] = useState<DayCalculation[]>([])
   const { user } = useAuth()
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
 
   useEffect(() => { loadEmployees(); loadCompany(); loadWorkSchedules() }, [user])
   useEffect(() => { if (selectedEmployee) loadTimeRecords() }, [selectedEmployee, selectedRange])
@@ -257,7 +263,17 @@ function calculateReport() {
                       selected={selectedRange}
                       onSelect={handleRangeSelect}
                       locale={ptBR}
-                      components={{ Caption: CustomCaption }}
+                      month={calendarMonth}
+                      onMonthChange={setCalendarMonth}
+                      components={{
+                        Caption: (props) => (
+                          <CustomCaption
+                            {...props}
+                            onMonthChange={setCalendarMonth}
+                            locale={ptBR}
+                          />
+                        )
+                      }}
                       classNames={{
                         head_row: "grid grid-cols-7",
                         head_cell: "text-center text-muted-foreground text-xs font-semibold uppercase",
