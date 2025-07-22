@@ -224,38 +224,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   } */ // logout antigo
 
   const logout = async () => {
-    const deviceInfo = navigator.userAgent;
-  
+    // 1) marca sessão inativa no seu próprio banco
     try {
-      if (user) {
-        await supabase
-          .from("user_sessions")
-          .update({ is_active: false })
-          .eq("user_id", user.id)
-          .eq("device_info", deviceInfo);
-      }
-  
-      const { error } = await supabase.auth.signOut();
-  
-      if (error) {
-        // se for erro 403, apenas loga e continua
-        if (error.status === 403) {
-          console.warn("Logout global proibido (403), continuando logout local.");
-        } else {
-          throw error;
-        }
-      }
+      await supabase
+        .from("user_sessions")
+        .update({ is_active: false })
+        .eq("user_id", user?.id)
+        .eq("device_info", navigator.userAgent)
     } catch (e) {
-      console.warn("Erro no logout:", e);
+      console.warn("Falha ao desativar user_sessions:", e)
     }
   
-    // Limpa o estado
-    setUser(null);
-    setProfile(null);
+    // 2) signOut apenas da sessão local
+    const { error } = await supabase.auth.signOut({ scope: "local" })
+    if (error) {
+      console.warn("Erro no logout local:", error)
+    }
   
-    // Redireciona
-    window.location.href = "/";
-  };
+    // 3) limpa o estado e redireciona
+    setUser(null)
+    setProfile(null)
+    window.location.href = "/"
+  }
   
 
   return (
