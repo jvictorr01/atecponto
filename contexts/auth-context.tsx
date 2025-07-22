@@ -223,28 +223,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   } */ // logout antigo
 
+  // LOGOUT CORRIGIDO - Múltiplas estratégias para garantir compatibilidade
   const logout = async () => {
-    // 1) marca sessão inativa no seu próprio banco
     try {
-      await supabase
-        .from("user_sessions")
-        .update({ is_active: false })
-        .eq("user_id", user?.id)
-        .eq("device_info", navigator.userAgent)
-    } catch (e) {
-      console.warn("Falha ao desativar user_sessions:", e)
+      // 1) Desativa sessão no banco se usuário existe e navigator está disponível
+      if (user && typeof navigator !== "undefined") {
+        try {
+          await supabase
+            .from("user_sessions")
+            .update({ is_active: false })
+            .eq("user_id", user.id)
+            .eq("device_info", navigator.userAgent)
+        } catch (e) {
+          console.warn("Falha ao desativar user_sessions:", e)
+        }
+      }
+
+      // 2) Limpa estado local primeiro
+      setUser(null)
+      setProfile(null)
+      setBlockedCompany(null)
+
+      // 3) Tenta logout com diferentes estratégias
+      let logoutSuccess = false
+      
+      // Estratégia 1: Logout local (funciona na maioria dos casos)
+      try {
+        const { error } = await supabase.auth.signOut({ scope: "local" })
+        if (!error) {
+          logoutSuccess = true
+        }
+      } catch (e) {
+        console.warn("Logout local falhou:", e)
+      }
+
+      // Estratégia 2: Se local falhou, tenta logout global
+      if (!logoutSuccess) {
+        try {
+          const { error } = await supabase.auth.signOut()
+          if (!error) {
+            logoutSuccess = true
+          }
+        } catch (e) {
+          console.warn("Logout global falhou:", e)
+        }
+      }
+
+      // Estratégia 3: Força limpeza manual se tudo falhou
+      if (!logoutSuccess) {
+        try {
+          // Remove tokens manualmente se possível
+          if (typeof localStorage !== "undefined") {
+            const keys = Object.keys(localStorage)
+            keys.forEach(key => {
+              if (key.startsWith('sb-') || key.includes('supabase')) {
+                localStorage.removeItem(key)
+              }
+            })
+          }
+        } catch (e) {
+          console.warn("Limpeza manual falhou:", e)
+        }
+      }
+
+    } catch (error) {
+      console.error("Erro durante logout:", error)
+      // Mesmo com erro, limpa o estado local
+      setUser(null)
+      setProfile(null)
+      setBlockedCompany(null)
+    } finally {
+      // 4) Sempre redireciona no final
+      try {
+        if (typeof window !== "undefined") {
+          window.location.href = "/"
+        }
+      } catch (e) {
+        console.warn("Redirecionamento falhou:", e)
+      }
     }
-  
-    // 2) signOut apenas da sessão local
-    const { error } = await supabase.auth.signOut({ scope: "local" })
-    if (error) {
-      console.warn("Erro no logout local:", error)
-    }
-  
-    // 3) limpa o estado e redireciona
-    setUser(null)
-    setProfile(null)
-    window.location.href = "/"
   }
   
 
