@@ -257,6 +257,12 @@ export function TimeTrackingTab() {
               </p>
             </div>
             <div className="flex items-start space-x-2">
+              <div className="w-2 h-2 bg-orange-500 rounded-full mt-2"></div>
+              <p>
+                <strong>Compensação:</strong> Para calcular extras e faltas, basta diminuir o total de extra pelo total de faltas
+              </p>
+            </div>
+            <div className="flex items-start space-x-2">
               <div className="w-2 h-2 bg-gray-500 rounded-full mt-2"></div>
               <p>
                 <strong>Dias sem configuração:</strong> Não são contabilizados no cálculo
