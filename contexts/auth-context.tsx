@@ -234,7 +234,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .eq("device_info", deviceInfo)
   }
 
-  await supabase.auth.signOut()
+  try {
+    await supabase.auth.signOut()
+  } catch (e) {
+    // Se der erro 403, ignora e segue o fluxo
+    console.warn("Erro ao deslogar do Supabase, mas continuando logout local.", e)
+  }
 
   // Limpa os estados do contexto
   setUser(null)
