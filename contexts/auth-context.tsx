@@ -224,30 +224,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   } */ // logout antigo
 
   const logout = async () => {
-  const deviceInfo = navigator.userAgent
-
-  if (user) {
-    await supabase
-      .from("user_sessions")
-      .update({ is_active: false })
-      .eq("user_id", user.id)
-      .eq("device_info", deviceInfo)
-  }
-
-  try {
-    await supabase.auth.signOut()
-  } catch (e) {
-    // Se der erro 403, ignora e segue o fluxo
-    console.warn("Erro ao deslogar do Supabase, mas continuando logout local.", e)
-  }
-
-  // Limpa os estados do contexto
-  setUser(null)
-  setProfile(null)
-
-  // Redireciona para a tela de login
-  window.location.href = "/" // ← redireciona para a página principal
-} // logou novo
+    const deviceInfo = navigator.userAgent;
+  
+    try {
+      if (user) {
+        await supabase
+          .from("user_sessions")
+          .update({ is_active: false })
+          .eq("user_id", user.id)
+          .eq("device_info", deviceInfo);
+      }
+  
+      const { error } = await supabase.auth.signOut();
+  
+      if (error) {
+        // se for erro 403, apenas loga e continua
+        if (error.status === 403) {
+          console.warn("Logout global proibido (403), continuando logout local.");
+        } else {
+          throw error;
+        }
+      }
+    } catch (e) {
+      console.warn("Erro no logout:", e);
+    }
+  
+    // Limpa o estado
+    setUser(null);
+    setProfile(null);
+  
+    // Redireciona
+    window.location.href = "/";
+  };
+  
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, blockedCompany, login, logout, register }}>{children}</AuthContext.Provider>
